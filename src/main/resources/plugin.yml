@@ -1,0 +1,19 @@
+name: ChunkAnchor
+version: ${project.version}
+main: pl.psalkowski.chunkanchor.ChunkAnchorPlugin
+api-version: '1.21'
+author: psalkowski
+description: Keep chunks loaded when players are online
+
+commands:
+  chunkanchor:
+    description: Manage chunk anchors
+    usage: /<command> <add|remove|list|show> [name]
+    permission: chunkanchor.use
+    aliases:
+      - ca
+
+permissions:
+  chunkanchor.use:
+    description: Allows using chunk anchor commands
+    default: op

@@ -1,0 +1,103 @@
+---
+when:
+  - event: push
+    branch: main
+  - event: tag
+    tag: "v*"
+  - event: manual
+
+steps:
+  build-snapshot:
+    image: maven:3.9-eclipse-temurin-21
+    when:
+      - event: push
+        branch: main
+    commands:
+      - mvn clean package -DskipTests -q
+      - VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+      - echo "Built version $VERSION"
+      - echo "$VERSION" > .version
+
+  upload-snapshot:
+    image: minio/mc:latest
+    when:
+      - event: push
+        branch: main
+    environment:
+      S3_ACCESS_KEY:
+        from_secret: s3_access_key
+      S3_SECRET_KEY:
+        from_secret: s3_secret_key
+    commands:
+      - mc alias set minio https://s3.psalkowski.pl "$S3_ACCESS_KEY" "$S3_SECRET_KEY"
+      - export VERSION=$(cat .version) && mc cp target/ChunkAnchor-$VERSION.jar minio/minecraft-plugins/chunk-anchor/ChunkAnchor-$VERSION.jar && echo "Uploaded ChunkAnchor-$VERSION.jar"
+      - mc cp target/ChunkAnchor-$(cat .version).jar minio/minecraft-plugins/chunk-anchor/ChunkAnchor-SNAPSHOT.jar && echo "Uploaded ChunkAnchor-SNAPSHOT.jar"
+
+  build-release:
+    image: maven:3.9-eclipse-temurin-21
+    when:
+      - event: tag
+    commands:
+      - VERSION=${CI_COMMIT_TAG#v}
+      - echo "Building release version $VERSION"
+      - mvn versions:set -DnewVersion=$VERSION -DgenerateBackupPoms=false -q
+      - mvn clean package -DskipTests -q
+
+  upload-release:
+    image: minio/mc:latest
+    when:
+      - event: tag
+    depends_on:
+      - build-release
+    environment:
+      S3_ACCESS_KEY:
+        from_secret: s3_access_key
+      S3_SECRET_KEY:
+        from_secret: s3_secret_key
+    commands:
+      - |
+        VERSION=$${CI_COMMIT_TAG#v}
+        mc alias set minio https://s3.psalkowski.pl "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY"
+        mc cp target/ChunkAnchor-$$VERSION.jar minio/minecraft-plugins/chunk-anchor/ChunkAnchor.jar
+        mc cp target/ChunkAnchor-$$VERSION.jar minio/minecraft-plugins/chunk-anchor/ChunkAnchor-$$VERSION.jar
+        echo "Uploaded ChunkAnchor-$$VERSION.jar"
+
+  github-release:
+    image: alpine:latest
+    when:
+      - event: tag
+    depends_on:
+      - build-release
+    environment:
+      GITHUB_TOKEN:
+        from_secret: github_token
+    commands:
+      - apk add --no-cache curl jq
+      - |
+        set -e
+        VERSION=$${CI_COMMIT_TAG#v}
+        CHANGELOG="Release v$$VERSION"
+
+        RELEASE_DATA=$$(jq -n \
+          --arg tag "v$$VERSION" \
+          --arg name "v$$VERSION" \
+          --arg body "$$CHANGELOG" \
+          '{tag_name: $$tag, name: $$name, body: $$body, draft: false, prerelease: false}')
+
+        RESPONSE=$$(curl -s -X POST "https://api.github.com/repos/HomeCraftMC/chunk-anchor/releases" \
+          -H "Authorization: token $$GITHUB_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d "$$RELEASE_DATA")
+
+        RELEASE_ID=$$(echo "$$RESPONSE" | jq -r '.id')
+        if [ "$$RELEASE_ID" = "null" ]; then
+          echo "Failed to create release: $$RESPONSE"
+          exit 1
+        fi
+
+        curl -s -X POST "https://uploads.github.com/repos/HomeCraftMC/chunk-anchor/releases/$$RELEASE_ID/assets?name=ChunkAnchor-$$VERSION.jar" \
+          -H "Authorization: token $$GITHUB_TOKEN" \
+          -H "Content-Type: application/java-archive" \
+          --data-binary @target/ChunkAnchor-$$VERSION.jar
+
+        echo "Created GitHub Release v$$VERSION"

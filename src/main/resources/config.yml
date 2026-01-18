@@ -1,0 +1,9 @@
+# Maximum anchors per player
+default-limit: 3
+
+# Chunk radius around anchor point
+# 3 = 7x7 chunks, 4 = 9x9 chunks, etc.
+chunk-radius: 3
+
+# Visualization duration in seconds
+show-duration: 30
