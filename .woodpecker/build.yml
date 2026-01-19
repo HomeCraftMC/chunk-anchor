@@ -62,6 +62,48 @@ steps:
         mc cp target/ChunkAnchor-$$VERSION.jar minio/minecraft-plugins/chunk-anchor/ChunkAnchor-$$VERSION.jar
         echo "Uploaded ChunkAnchor-$$VERSION.jar"
 
+  publish-modrinth:
+    image: alpine:latest
+    when:
+      - event: tag
+    depends_on:
+      - build-release
+    environment:
+      MODRINTH_TOKEN:
+        from_secret: modrinth_token
+    commands:
+      - apk add --no-cache curl yq jq sed
+      - |
+        set -e
+        VERSION=$${CI_COMMIT_TAG#v}
+        GAME_VERSIONS=$$(yq -o=json '.game_versions' modrinth.yml)
+        LOADERS=$$(yq -o=json '.loaders' modrinth.yml)
+
+        CHANGELOG="Release v$$VERSION"
+        CHANGELOG_JSON=$$(printf '%s' "$$CHANGELOG" | jq -Rs .)
+
+        RESPONSE=$$(curl -s -X POST "https://api.modrinth.com/v2/version" \
+          -H "Authorization: $$MODRINTH_TOKEN" \
+          -F "data={
+            \"name\": \"v$$VERSION\",
+            \"version_number\": \"$$VERSION\",
+            \"project_id\": \"3ejXbs5z\",
+            \"file_parts\": [\"file\"],
+            \"dependencies\": [],
+            \"game_versions\": $$GAME_VERSIONS,
+            \"loaders\": $$LOADERS,
+            \"version_type\": \"release\",
+            \"featured\": true,
+            \"changelog\": $$CHANGELOG_JSON
+          }" \
+          -F "file=@target/ChunkAnchor-$$VERSION.jar")
+        echo "$$RESPONSE"
+        if echo "$$RESPONSE" | grep -q '"error"'; then
+          echo "Modrinth publish failed!"
+          exit 1
+        fi
+        echo "Published to Modrinth"
+
   github-release:
     image: alpine:latest
     when:
@@ -101,3 +143,33 @@ steps:
           --data-binary @target/ChunkAnchor-$$VERSION.jar
 
         echo "Created GitHub Release v$$VERSION"
+
+  bump-version:
+    image: maven:3.9-eclipse-temurin-21
+    when:
+      - event: tag
+    depends_on:
+      - upload-release
+      - publish-modrinth
+      - github-release
+    environment:
+      GITHUB_TOKEN:
+        from_secret: github_token
+    commands:
+      - apt-get update -qq && apt-get install -y -qq git
+      - |
+        VERSION=$${CI_COMMIT_TAG#v}
+        MAJOR=$$(echo $$VERSION | cut -d. -f1)
+        MINOR=$$(echo $$VERSION | cut -d. -f2)
+        NEXT_MINOR=$$((MINOR + 1))
+        NEXT_VERSION="$${MAJOR}.$${NEXT_MINOR}.0-SNAPSHOT"
+        echo "Bumping version to $$NEXT_VERSION"
+        git config --global user.email "ci@homecraftmc.com"
+        git config --global user.name "HomeCraft CI"
+        git remote set-url origin https://x-access-token:$${GITHUB_TOKEN}@github.com/HomeCraftMC/chunk-anchor.git
+        git fetch origin main
+        git checkout main
+        mvn versions:set -DnewVersion=$$NEXT_VERSION -DgenerateBackupPoms=false -q
+        git add pom.xml
+        git commit -m "Bump version to $$NEXT_VERSION [skip ci]"
+        git push origin main
