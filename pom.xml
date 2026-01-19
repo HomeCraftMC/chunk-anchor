@@ -6,7 +6,7 @@
 
     <groupId>pl.psalkowski</groupId>
     <artifactId>chunk-anchor</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <version>1.2.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <name>ChunkAnchor</name>
