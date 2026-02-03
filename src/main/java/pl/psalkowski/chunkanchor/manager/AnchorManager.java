@@ -6,6 +6,8 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.Plugin;
 
+import pl.psalkowski.chunkanchor.model.LoadMode;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.*;
@@ -13,13 +15,25 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class AnchorManager {
 
-    public record Anchor(String world, int x, int z) {
+    public record Anchor(String world, int x, int z, LoadMode loadMode, boolean enabled) {
+        public Anchor(String world, int x, int z) {
+            this(world, x, z, LoadMode.DEFAULT, true);
+        }
+
         public int chunkX() {
             return x >> 4;
         }
 
         public int chunkZ() {
             return z >> 4;
+        }
+
+        public Anchor withLoadMode(LoadMode newMode) {
+            return new Anchor(world, x, z, newMode, enabled);
+        }
+
+        public Anchor withEnabled(boolean newEnabled) {
+            return new Anchor(world, x, z, loadMode, newEnabled);
         }
     }
 
@@ -38,7 +52,7 @@ public class AnchorManager {
     public boolean addAnchor(UUID playerId, String name, World world, int x, int z) {
         Map<String, Anchor> anchors = playerAnchors.computeIfAbsent(playerId, k -> new ConcurrentHashMap<>());
 
-        if (anchors.size() >= limit) {
+        if (getEnabledAnchorCount(playerId) >= limit) {
             return false;
         }
 
@@ -100,8 +114,44 @@ public class AnchorManager {
         return anchors == null ? 0 : anchors.size();
     }
 
+    public int getEnabledAnchorCount(UUID playerId) {
+        Map<String, Anchor> anchors = playerAnchors.get(playerId);
+        if (anchors == null) {
+            return 0;
+        }
+        return (int) anchors.values().stream().filter(Anchor::enabled).count();
+    }
+
     public int getLimit() {
         return limit;
+    }
+
+    public boolean setAnchorLoadMode(UUID playerId, String name, LoadMode loadMode) {
+        Map<String, Anchor> anchors = playerAnchors.get(playerId);
+        if (anchors == null || !anchors.containsKey(name)) {
+            return false;
+        }
+        Anchor oldAnchor = anchors.get(name);
+        anchors.put(name, oldAnchor.withLoadMode(loadMode));
+        save();
+        return true;
+    }
+
+    public boolean setAnchorEnabled(UUID playerId, String name, boolean enabled) {
+        Map<String, Anchor> anchors = playerAnchors.get(playerId);
+        if (anchors == null || !anchors.containsKey(name)) {
+            return false;
+        }
+        Anchor oldAnchor = anchors.get(name);
+        if (oldAnchor.enabled() == enabled) {
+            return true;
+        }
+        if (enabled && getEnabledAnchorCount(playerId) >= limit) {
+            return false;
+        }
+        anchors.put(name, oldAnchor.withEnabled(enabled));
+        save();
+        return true;
     }
 
     private void load() {
@@ -129,9 +179,17 @@ public class AnchorManager {
                     String world = anchorSection.getString("world");
                     int x = anchorSection.getInt("x");
                     int z = anchorSection.getInt("z");
+                    String loadModeStr = anchorSection.getString("load-mode", "DEFAULT");
+                    LoadMode loadMode;
+                    try {
+                        loadMode = LoadMode.valueOf(loadModeStr);
+                    } catch (IllegalArgumentException e) {
+                        loadMode = LoadMode.DEFAULT;
+                    }
+                    boolean enabled = anchorSection.getBoolean("enabled", true);
 
                     if (world != null) {
-                        anchors.put(anchorName, new Anchor(world, x, z));
+                        anchors.put(anchorName, new Anchor(world, x, z, loadMode, enabled));
                     }
                 }
 
@@ -157,6 +215,8 @@ public class AnchorManager {
                 data.set(anchorPath + ".world", anchor.world());
                 data.set(anchorPath + ".x", anchor.x());
                 data.set(anchorPath + ".z", anchor.z());
+                data.set(anchorPath + ".load-mode", anchor.loadMode().name());
+                data.set(anchorPath + ".enabled", anchor.enabled());
             });
         });
 

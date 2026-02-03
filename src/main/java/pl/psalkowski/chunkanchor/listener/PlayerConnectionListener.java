@@ -17,15 +17,15 @@ public class PlayerConnectionListener implements Listener {
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
-        if (Bukkit.getOnlinePlayers().size() == 1 && !chunkLoadManager.isActive()) {
-            chunkLoadManager.loadAllChunks();
+        if (Bukkit.getOnlinePlayers().size() == 1 && !chunkLoadManager.isPlayerOnlineChunksLoaded()) {
+            chunkLoadManager.loadPlayerOnlineAnchors();
         }
     }
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
-        if (Bukkit.getOnlinePlayers().size() == 1 && chunkLoadManager.isActive()) {
-            chunkLoadManager.unloadAllChunks();
+        if (Bukkit.getOnlinePlayers().size() == 1 && chunkLoadManager.isPlayerOnlineChunksLoaded()) {
+            chunkLoadManager.unloadPlayerOnlineAnchors();
         }
     }
 }

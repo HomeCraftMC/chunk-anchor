@@ -7,3 +7,8 @@ chunk-radius: 3
 
 # Visualization duration in seconds
 show-duration: 30
+
+# Default load mode for new anchors
+# ALWAYS - chunks are loaded even when no players are online
+# PLAYER_ONLINE - chunks are only loaded when at least one player is online
+default-load-mode: PLAYER_ONLINE

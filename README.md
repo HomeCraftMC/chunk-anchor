@@ -12,7 +12,8 @@ A Paper plugin that keeps chunks loaded when players are online - perfect for au
 - **Per-Player Namespaces**: Each player manages their own anchors independently
 - **Configurable Area**: Default loads 7x7 chunks (49 chunks) per anchor
 - **Visual Boundaries**: See exactly which chunks are loaded with particle effects
-- **Smart Loading**: Chunks only load when at least one player is online
+- **Load Modes**: Choose between ALWAYS (24/7) or PLAYER_ONLINE loading per anchor
+- **Enable/Disable**: Temporarily disable anchors without deleting them
 - **Persistent Storage**: Anchors survive server restarts
 - **Performance Friendly**: Uses Paper's chunk ticket API for proper chunk ticking
 
@@ -22,8 +23,11 @@ A Paper plugin that keeps chunks loaded when players are online - perfect for au
 |---------|-------------|------------|
 | `/chunkanchor add <name>` | Create anchor at your current location | `chunkanchor.use` |
 | `/chunkanchor remove <name>` | Remove an anchor by name | `chunkanchor.use` |
-| `/chunkanchor list` | List all your anchors with coordinates | `chunkanchor.use` |
+| `/chunkanchor list` | List all your anchors with status | `chunkanchor.use` |
 | `/chunkanchor show <name>` | Visualize anchor boundaries for 30 seconds | `chunkanchor.use` |
+| `/chunkanchor mode <name> <mode>` | Set load mode (DEFAULT/ALWAYS/PLAYER_ONLINE) | `chunkanchor.use` |
+| `/chunkanchor enable <name>` | Enable a disabled anchor | `chunkanchor.use` |
+| `/chunkanchor disable <name>` | Disable an anchor (doesn't count toward limit) | `chunkanchor.use` |
 
 **Alias**: `/ca`
 
@@ -39,8 +43,23 @@ A Paper plugin that keeps chunks loaded when players are online - perfect for au
 
 1. **Anchor Creation**: Stand where you want chunks loaded and run `/chunkanchor add farm`
 2. **Area Loading**: The plugin loads a configurable radius of chunks around the anchor point
-3. **Activation**: Chunks are loaded when the first player joins the server
-4. **Deactivation**: Chunks are unloaded when the last player leaves
+3. **Activation**: Depends on load mode:
+   - **PLAYER_ONLINE**: Chunks load when first player joins, unload when last player leaves
+   - **ALWAYS**: Chunks load at server startup and stay loaded 24/7
+
+### Load Modes
+
+| Mode | Description |
+|------|-------------|
+| `DEFAULT` | Uses server's `default-load-mode` from config |
+| `ALWAYS` | Chunks stay loaded even when no players are online |
+| `PLAYER_ONLINE` | Chunks only load when at least one player is online |
+
+### Enable/Disable
+
+- Disabled anchors don't load chunks and don't count toward your anchor limit
+- Useful for temporarily pausing farms without losing the anchor location
+- Re-enabling checks the limit - you can't enable if you're already at max active anchors
 
 ### Chunk Loading
 
@@ -73,6 +92,11 @@ chunk-radius: 3
 
 # Visualization duration in seconds
 show-duration: 30
+
+# Default load mode for new anchors
+# ALWAYS - chunks are loaded even when no players are online
+# PLAYER_ONLINE - chunks are only loaded when at least one player is online
+default-load-mode: PLAYER_ONLINE
 ```
 
 ### anchors.yml
@@ -86,10 +110,14 @@ players:
       world: world
       x: 100
       z: -200
+      load-mode: ALWAYS
+      enabled: true
     base:
       world: world
       x: 0
       z: 0
+      load-mode: DEFAULT
+      enabled: false
 ```
 
 ## Installation
